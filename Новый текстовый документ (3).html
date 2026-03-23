@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Three Cats: Elo Update</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Подключаем больше шрифтов */
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;900&family=Roboto+Mono:wght@500&family=Press+Start+2P&family=Russo+One&family=Orbitron:wght@900&family=Bangers&family=Monoton&display=swap');
+
+        :root {
+            --bg-dim: 0.7;
+            --btn-opacity: 0.85;
+            --font-main: 'Kanit', sans-serif;
+            --text-color: #ffffff;
+            --accent-color: #ff5e62;
+            --panel-bg: rgba(20, 20, 25, 0.9);
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: var(--font-main);
+            color: var(--text-color);
+            user-select: none;
+        }
+
+        /* --- СЛОИ --- */
+        #bg-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #2b2b2b 0%, #000000 100%);
+            background-size: cover;
+            background-position: center;
+            z-index: 0;
+        }
+        
+        #bg-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            opacity: var(--bg-dim);
+            z-index: 1;
+            transition: opacity 0.3s;
+        }
+
+        #game-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 0 60px rgba(0,0,0,0.8);
+            pointer-events: auto;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        /* --- МЕНЮ --- */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.1);
+        }
+
+        .game-logo {
+            font-size: 90px;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: var(--text-color);
+            text-shadow: 0 5px 0 #000, 0 0 40px rgba(255,255,255,0.1);
+            margin-bottom: 50px;
+            font-family: var(--font-main);
+            letter-spacing: -2px;
+            text-align: center;
+        }
+
+        .ddnet-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 380px;
+        }
+
+        .menu-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: var(--text-color);
+            padding: 20px;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: 0.2s;
+            text-transform: uppercase;
+            font-family: var(--font-main);
+            backdrop-filter: blur(5px);
+        }
+
+        .menu-btn:hover {
+            background: var(--text-color);
+            color: #000;
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+
+        /* --- ЭКРАН РЕЗУЛЬТАТОВ --- */
+        #screen-gameover { background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px); }
+        
+        .result-title { font-size: 80px; font-weight: 900; text-transform: uppercase; margin-bottom: 20px; text-shadow: 0 0 30px currentColor; font-family: var(--font-main); }
+        .score-pill { background: #111; border: 2px solid #333; border-radius: 100px; padding: 15px 50px; font-size: 50px; font-weight: 900; color: var(--text-color); margin-bottom: 20px; font-family: var(--font-main); }
+        
+        .elo-change { font-size: 24px; font-weight: bold; margin-bottom: 30px; font-family: 'Roboto Mono', monospace; }
+        
+        .btn-gradient { width: 280px; padding: 18px; border: none; border-radius: 8px; font-size: 20px; font-weight: 900; text-transform: uppercase; color: white; cursor: pointer; margin-bottom: 15px; font-family: var(--font-main); transition: 0.2s; }
+        .btn-gradient:hover { filter: brightness(1.2); transform: scale(1.03); }
+        .btn-orange { background: linear-gradient(90deg, #ff9966, #ff5e62); }
+        .btn-purple { background: linear-gradient(90deg, #654ea3, #eaafc8); }
+
+        /* --- UI EDITOR --- */
+        #ui-editor {
+            position: absolute;
+            top: 20px; right: 20px;
+            width: 320px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 200;
+            font-family: 'Roboto Mono', monospace;
+            display: none;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            max-height: 85vh;
+            overflow-y: auto;
+            color: #eee;
+        }
+
+        #ui-editor::-webkit-scrollbar { width: 6px; }
+        #ui-editor::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+        .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .editor-section { margin-bottom: 20px; }
+        .editor-section h4 { font-size: 12px; color: #888; text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 1px; }
+        .editor-row { margin-bottom: 12px; }
+        .editor-row label { display: block; font-size: 11px; color: #ccc; margin-bottom: 5px; }
+        
+        input[type="text"], select { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; font-family: inherit; box-sizing: border-box; }
+        input[type="range"] { width: 100%; accent-color: var(--accent-color); cursor: pointer; }
+        input[type="color"] { width: 100%; height: 35px; border: none; background: none; cursor: pointer; }
+        
+        .toggle-editor-btn { position: absolute; top: 20px; right: 20px; z-index: 201; padding: 8px 16px; background: #222; color: white; border: 1px solid #444; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; opacity: 0.6; transition: 0.2s; }
+        .toggle-editor-btn:hover { opacity: 1; border-color: white; }
+
+        /* HUD */
+        #hud { position: absolute; top: 30px; width: 100%; text-align: center; font-size: 48px; font-weight: 900; z-index: 6; display: none; color: var(--text-color); text-shadow: 0 4px 10px rgba(0,0,0,0.8); font-family: var(--font-main); }
+        .elo-badge { font-size: 16px; display: block; margin-top: -5px; color: #aaa; font-family: 'Roboto Mono', monospace; font-weight: normal; }
+
+    </style>
+</head>
+<body>
+
+    <div id="bg-layer"></div>
+    <div id="bg-overlay"></div>
+
+    <button class="toggle-editor-btn" onclick="toggleEditor()">⚙ SETTINGS</button>
+
+    <!-- UI EDITOR -->
+    <div id="ui-editor">
+        <div class="editor-header">
+            <h3>SETTINGS</h3>
+            <span style="font-size:10px; cursor:pointer;" onclick="toggleEditor()">✖</span>
+        </div>
+        
+        <div class="editor-section">
+            <h4>Текст и Шрифт</h4>
+            <div class="editor-row">
+                <label>Заголовок игры</label>
+                <input type="text" id="inp-title" value="DeathWalker" oninput="updateText('main-title', this.value)">
+            </div>
+            
+            <div class="editor-row">
+                <label>Шрифт интерфейса</label>
+                <select id="inp-font" onchange="updateCSS('--font-main', this.value)">
+                    <option value="'Kanit', sans-serif">Kanit (Standard)</option>
+                    <option value="'Orbitron', sans-serif">Orbitron (Sci-Fi)</option>
+                    <option value="'Bangers', cursive">Bangers (Comic)</option>
+                    <option value="'Russo One', sans-serif">Russo One (Bold)</option>
+                    <option value="'Press Start 2P', cursive">Pixel Art</option>
+                    <option value="'Monoton', cursive">Monoton (Neon)</option>
+                </select>
+            </div>
+
+            <div class="editor-row">
+                <label>Цвет текста</label>
+                <input type="color" id="inp-color" value="#ffffff" oninput="updateCSS('--text-color', this.value)">
+            </div>
+        </div>
+
+        <div class="editor-section">
+            <h4>Игра</h4>
+            <div class="editor-row">
+                <label>Сбросить Elo (Рейтинг)</label>
+                <button onclick="Config.elo = 1000; saveSettings(); UI.updateScore(); alert('Рейтинг сброшен!')" style="background:#444; color:white; border:none; padding:5px; width:100%;">Reset Elo</button>
+            </div>
+             <div class="editor-row">
+                <label>Затемнение фона</label>
+                <input type="range" id="inp-dim" min="0" max="1" step="0.05" value="0.7" oninput="updateCSS('--bg-dim', this.value)">
+            </div>
+        </div>
+
+        <div class="editor-section">
+            <h4>Текстуры</h4>
+            <div class="editor-row">
+                <label>Фон</label>
+                <input type="file" accept="image/*" onchange="uploadBG(this)">
+            </div>
+            <div class="editor-row">
+                <label>Скин Игрока</label>
+                <input type="file" accept="image/*" onchange="uploadSkin(this, 'player')">
+            </div>
+            <div class="editor-row">
+                <label>Скин Шайбы</label>
+                <input type="file" accept="image/*" onchange="uploadSkin(this, 'puck')">
+            </div>
+        </div>
+    </div>
+
+    <!-- МЕНЮ -->
+    <div id="screen-menu" class="screen">
+        <div class="game-logo" id="main-title">DEATHWALKER</div>
+        <div style="margin-bottom: 20px; color: #aaa; font-family: 'Roboto Mono', monospace;">ВАШ ELO: <span id="menu-elo">1000</span></div>
+        
+        <div class="ddnet-menu">
+            <button class="menu-btn" onclick="Game.start()">
+                <span id="btn-play-text">ИГРАТЬ</span>
+            </button>
+            <button class="menu-btn" onclick="toggleEditor()">
+                <span id="btn-set-text">НАСТРОЙКИ</span>
+            </button>
+            <button class="menu-btn" onclick="window.close()">
+                <span>ВЫХОД</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ИГРА -->
+    <div id="hud">
+        <span id="score-p" style="color:#FF9F1C">0</span> : <span id="score-ai" style="color:#ff5e62">0</span>
+        <span class="elo-badge">ELO: <span id="hud-elo">1000</span></span>
+    </div>
+    
+    <div id="game-layer">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+    </div>
+
+    <!-- ЭКРАН РЕЗУЛЬТАТОВ -->
+    <div id="screen-gameover" class="screen hidden">
+        <div class="result-title" id="go-title">ПОРАЖЕНИЕ</div>
+        <div class="score-pill" id="go-score">0 - 0</div>
+        <div class="elo-change" id="go-elo-change">Рейтинг: -15</div>
+        
+        <button class="btn-gradient btn-orange" onclick="UI.showMenu()">В МЕНЮ</button>
+        <button class="btn-gradient btn-purple" onclick="Game.start()">РЕВАНШ</button>
+    </div>
+
+<script>
+/**
+ * DEATHWALKER ELO EDITION
+ * 
+ * - Игрок СЛЕВА
+ * - Бот СПРАВА
+ * - Умный бот с ошибками и ELO
+ * - Сохранение настроек
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- НАСТРОЙКИ И СОХРАНЕНИЕ ---
+const Assets = { bg: null, player: null, puck: null };
+
+// Загружаемая конфигурация
+const Config = {
+    friction: 0.99,
+    puckMaxSpeed: 18,
+    goalSize: 160,
+    elo: 1000,
+    colors: {
+        bgDim: 0.7,
+        text: '#ffffff',
+        font: "'Kanit', sans-serif"
+    },
+    texts: {
+        title: "DEATHWALKER"
+    }
+};
+
+const State = {
+    active: false,
+    score: { p: 0, ai: 0 }
+};
+
+// --- СУЩНОСТИ ---
+const Puck = { x: 0, y: 0, r: 16, vx: 0, vy: 0 };
+const Player = { x: 0, y: 0, r: 30, lastX:0, lastY:0, vx:0, vy:0 }; // СЛЕВА
+const AI = { x: 0, y: 0, r: 30 }; // СПРАВА
+
+// --- ЛОКАЛЬНОЕ ХРАНИЛИЩЕ ---
+function loadSettings() {
+    const saved = localStorage.getItem('dw_settings_v2');
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        Config.elo = parsed.elo || 1000;
+        Config.colors = parsed.colors || Config.colors;
+        Config.texts = parsed.texts || Config.texts;
+
+        // Применяем сохраненное
+        document.documentElement.style.setProperty('--bg-dim', Config.colors.bgDim);
+        document.documentElement.style.setProperty('--text-color', Config.colors.text);
+        document.documentElement.style.setProperty('--font-main', Config.colors.font);
+        
+        document.getElementById('main-title').innerText = Config.texts.title;
+        
+        // Обновляем инпуты
+        document.getElementById('inp-title').value = Config.texts.title;
+        document.getElementById('inp-color').value = Config.colors.text;
+        document.getElementById('inp-dim').value = Config.colors.bgDim;
+        document.getElementById('inp-font').value = Config.colors.font;
+    }
+    UI.updateScore(); // Обновить Elo в UI
+}
+
+function saveSettings() {
+    // Обновляем конфиг из текущих значений UI/CSS переменных
+    const savedData = {
+        elo: Config.elo,
+        colors: Config.colors,
+        texts: Config.texts
+    };
+    localStorage.setItem('dw_settings_v2', JSON.stringify(savedData));
+}
+
+// --- ИГРОВОЙ ДВИЖОК ---
+const Game = {
+    loopId: null,
+
+    start: function() {
+        State.score = { p: 0, ai: 0 };
+        UI.updateScore();
+        State.active = true;
+        
+        document.getElementById('screen-menu').classList.add('hidden');
+        document.getElementById('screen-gameover').classList.add('hidden');
+        document.getElementById('hud').style.display = 'block';
+        canvas.style.opacity = 1;
+
+        this.resetRound();
+        if(this.loopId) cancelAnimationFrame(this.loopId);
+        this.loop();
+    },
+
+    resetRound: function() {
+        Puck.x = canvas.width / 2;
+        Puck.y = canvas.height / 2;
+        Puck.vx = 0; Puck.vy = 0;
+
+        setTimeout(() => {
+            if(!State.active) return;
+            // Подача от проигравшего (или рандом)
+            let dir = Math.random() > 0.5 ? 1 : -1;
+            Puck.vx = dir * 6;
+            Puck.vy = (Math.random() - 0.5) * 6;
+        }, 1000);
+    },
+
+    update: function() {
+        if (!State.active) return;
+
+        // --- 1. ШАЙБА ---
+        Puck.x += Puck.vx;
+        Puck.y += Puck.vy;
+        Puck.vx *= Config.friction;
+        Puck.vy *= Config.friction;
+
+        // Стены (верх/низ)
+        if (Puck.y - Puck.r < 0) { Puck.y = Puck.r; Puck.vy *= -0.9; }
+        if (Puck.y + Puck.r > canvas.height) { Puck.y = canvas.height - Puck.r; Puck.vy *= -0.9; }
+
+        // Голы
+        let goalTop = (canvas.height - Config.goalSize) / 2;
+        let goalBottom = goalTop + Config.goalSize;
+        let inGoal = Puck.y > goalTop && Puck.y < goalBottom;
+
+        if (Puck.x < 0) {
+            if (inGoal) this.score('AI'); // Бот забил (влево)
+            else { Puck.x = Puck.r; Puck.vx *= -0.8; }
+        }
+        if (Puck.x > canvas.width) {
+            if (inGoal) this.score('PLAYER'); // Игрок забил (вправо)
+            else { Puck.x = canvas.width - Puck.r; Puck.vx *= -0.8; }
+        }
+
+        // --- 2. ИГРОК ---
+        // Игрок теперь управляется только в левой половине экрана
+        Player.vx = Player.x - Player.lastX;
+        Player.vy = Player.y - Player.lastY;
+        Player.lastX = Player.x;
+        Player.lastY = Player.y;
+
+        // --- 3. AI (БОТ) - ПРАВАЯ СТОРОНА ---
+        this.updateAI();
+
+        // --- 4. КОЛЛИЗИИ ---
+        this.resolveCollision(Player, Puck);
+        this.resolveCollision(AI, Puck);
+    },
+
+    updateAI: function() {
+        // Параметры сложности от Elo
+        let difficulty = Math.min(2000, Math.max(500, Config.elo));
+        let speedFactor = 0.04 + (difficulty / 25000); // Скорость реакции (0.06 - 0.12)
+        let errorMargin = Math.max(0, 1500 - difficulty) / 10; // Ошибка в пикселях (100px для нуба, 0px для про)
+        
+        // Бот добавляет ошибку к своим расчетам (синусоида, чтобы бот не дрожал, а "мазал" плавно)
+        let humanError = Math.sin(Date.now() / 500) * errorMargin;
+
+        let targetY = Puck.y + humanError;
+        let targetX = 850; // Базовая позиция защиты
+
+        // Логика поведения
+        if (Puck.x > canvas.width / 2) {
+            // Шайба на половине бота (в защите)
+            
+            // Если шайба за спиной бота (ближе к стене, чем бот)
+            if (Puck.x > AI.x) {
+                // Бот пытается объехать шайбу, чтобы выбить её
+                if (Puck.y > AI.y) targetY = Puck.y - 60; // Обойти сверху
+                else targetY = Puck.y + 60; // Обойти снизу
+                targetX = Puck.x + 20; // Пытаться зайти за шайбу
+            } else {
+                // Обычная атака
+                targetX = Puck.x + 40; // Держаться чуть правее шайбы, чтобы бить влево
+            }
+        } else {
+            // Шайба на половине игрока
+            targetY = canvas.height / 2; // Вернуться в центр
+            targetX = 850; // Ждать у ворот
+        }
+
+        // Движение
+        AI.y += (targetY - AI.y) * speedFactor;
+        AI.x += (targetX - AI.x) * speedFactor;
+
+        // Ограничения для Бота (Правая половина)
+        // Важно: отступ от правой стены (canvas.width - AI.r - 5), чтобы не зажимал шайбу
+        AI.y = Math.max(AI.r, Math.min(canvas.height - AI.r, AI.y));
+        AI.x = Math.max(canvas.width/2 + AI.r, Math.min(canvas.width - AI.r - 5, AI.x));
+    },
+
+    resolveCollision: function(paddle, puck) {
+        let dx = puck.x - paddle.x;
+        let dy = puck.y - paddle.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        let minDist = paddle.r + puck.r;
+
+        if (dist < minDist) {
+            // Выталкивание
+            let angle = Math.atan2(dy, dx);
+            let push = minDist - dist + 1;
+            puck.x += Math.cos(angle) * push;
+            puck.y += Math.sin(angle) * push;
+
+            let nx = Math.cos(angle);
+            let ny = Math.sin(angle);
+            
+            let force = 8;
+            
+            // Добавляем инерцию
+            if (paddle === Player) {
+                let pSpeed = Math.sqrt(paddle.vx*paddle.vx + paddle.vy*paddle.vy);
+                force += pSpeed * 0.8;
+            } else {
+                // Бот бьет сильнее, если высокий рейтинг
+                force += (Config.elo / 500);
+            }
+
+            puck.vx = nx * force;
+            puck.vy = ny * force;
+
+            // Лимит скорости
+            let speed = Math.sqrt(puck.vx*puck.vx + puck.vy*puck.vy);
+            if(speed > Config.puckMaxSpeed) {
+                puck.vx = (puck.vx/speed) * Config.puckMaxSpeed;
+                puck.vy = (puck.vy/speed) * Config.puckMaxSpeed;
+            }
+        }
+    },
+
+    score: function(who) {
+        if(who === 'AI') State.score.ai++;
+        else State.score.p++;
+        
+        UI.updateScore();
+
+        if (State.score.p >= 7 || State.score.ai >= 7) {
+            this.gameOver(State.score.p >= 7);
+        } else {
+            this.resetRound();
+        }
+    },
+
+    gameOver: function(win) {
+        State.active = false;
+        canvas.style.opacity = 0.3;
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('screen-gameover').classList.remove('hidden');
+
+        // Расчет ELO
+        let eloChange = 0;
+        if (win) {
+            eloChange = 25; // Победа
+            Config.elo += eloChange;
+        } else {
+            eloChange = -15; // Поражение
+            Config.elo = Math.max(0, Config.elo + eloChange); // Не ниже 0
+        }
+        saveSettings(); // Сохраняем новый рейтинг
+
+        const title = document.getElementById('go-title');
+        title.innerText = win ? "ПОБЕДА" : "ПОРАЖЕНИЕ";
+        title.style.color = win ? "#4ade80" : "#ff5e62";
+
+        document.getElementById('go-score').innerText = `${State.score.p} - ${State.score.ai}`;
+        
+        const eloText = document.getElementById('go-elo-change');
+        eloText.innerText = `Рейтинг: ${win ? '+' : ''}${eloChange} (Всего: ${Config.elo})`;
+        eloText.style.color = win ? "#4ade80" : "#ff5e62";
+    },
+
+    draw: function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Разметка
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 100, 0, Math.PI*2); ctx.stroke();
+
+        // Ворота
+        let topG = (canvas.height - Config.goalSize)/2;
+        // Ворота игрока (Слева) - Красные, так как это цель бота?
+        // Нет, обычно свои ворота зеленые, чужие красные.
+        // Игрок (Слева) защищает левые ворота.
+        ctx.fillStyle = "rgba(100,255,100,0.15)"; // Свои
+        ctx.fillRect(0, topG, 10, Config.goalSize);
+        ctx.fillStyle = "rgba(255,100,100,0.15)"; // Врага
+        ctx.fillRect(canvas.width-10, topG, 10, Config.goalSize);
+
+        // Отрисовка
+        this.drawEntity(Player, Assets.player, '#FF9F1C');
+        this.drawEntity(AI, null, '#ff5e62');
+        this.drawEntity(Puck, Assets.puck, '#ffffff');
+    },
+
+    drawEntity: function(obj, img, color) {
+        ctx.save();
+        if (img) {
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, obj.r, 0, Math.PI*2);
+            ctx.clip();
+            ctx.drawImage(img, obj.x - obj.r, obj.y - obj.r, obj.r*2, obj.r*2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, obj.r, 0, Math.PI*2);
+            ctx.fillStyle = color;
+            ctx.shadowBlur = 10; 
+            ctx.shadowColor = color;
+            ctx.fill();
+        }
+        ctx.restore();
+    },
+
+    loop: function() {
+        if(State.active) {
+            Game.update();
+            Game.draw();
+            Game.loopId = requestAnimationFrame(() => Game.loop());
+        }
+    }
+};
+
+// --- UI HELPERS ---
+const UI = {
+    updateScore: function() {
+        document.getElementById('score-p').innerText = State.score.p;
+        document.getElementById('score-ai').innerText = State.score.ai;
+        document.getElementById('hud-elo').innerText = Config.elo;
+        document.getElementById('menu-elo').innerText = Config.elo;
+    },
+    showMenu: function() {
+        State.active = false;
+        if(Game.loopId) cancelAnimationFrame(Game.loopId);
+        
+        document.getElementById('screen-gameover').classList.add('hidden');
+        document.getElementById('screen-menu').classList.remove('hidden');
+        canvas.style.opacity = 0;
+        UI.updateScore();
+        Game.draw();
+    }
+};
+
+// --- ФУНКЦИИ РЕДАКТОРА ---
+function toggleEditor() {
+    const el = document.getElementById('ui-editor');
+    el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+}
+
+function updateText(id, val) {
+    document.getElementById(id).innerText = val;
+    Config.texts.title = val;
+    saveSettings();
+}
+
+function updateCSS(variable, val) {
+    document.documentElement.style.setProperty(variable, val);
+    if(variable === '--text-color') Config.colors.text = val;
+    if(variable === '--bg-dim') Config.colors.bgDim = val;
+    if(variable === '--font-main') Config.colors.font = val;
+    saveSettings();
+}
+
+function uploadBG(input) {
+    if(input.files[0]) {
+        const url = URL.createObjectURL(input.files[0]);
+        document.getElementById('bg-layer').style.backgroundImage = `url(${url})`;
+    }
+}
+
+function uploadSkin(input, type) {
+    if(input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => { 
+                Assets[type] = img; 
+                if(!State.active) Game.draw(); 
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// УПРАВЛЕНИЕ МЫШЬЮ (ОГРАНИЧЕНО ЛЕВОЙ СТОРОНОЙ)
+canvas.addEventListener('mousemove', (e) => {
+    if (!State.active) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    let mx = (e.clientX - rect.left) * scaleX;
+    let my = (e.clientY - rect.top) * scaleY;
+
+    // Игрок (СЛЕВА)
+    Player.x = Math.max(Player.r, Math.min(canvas.width/2 - Player.r, mx));
+    Player.y = Math.max(Player.r, Math.min(canvas.height - Player.r, my));
+});
+
+// Инициализация
+loadSettings();
+Game.draw();
+
+</script>
+</body>
+</html>
